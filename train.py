@@ -20,7 +20,9 @@ from video import VideoRecorder
 from agent.baseline_agent import BaselineAgent
 from agent.bisim_agent import BisimAgent
 from agent.deepmdp_agent import DeepMDPAgent
-from agents.navigation.carla_env import CarlaEnv
+#from agents.navigation.carla_env import CarlaEnv
+from gym_minigrid.envs import EmptyEnv16x16
+from gym_minigrid.wrappers import RGBImgPartialObsWrapper, ImgObsWrapper
 
 
 def parse_args():
@@ -36,12 +38,12 @@ def parse_args():
     parser.add_argument('--img_source', default=None, type=str, choices=['color', 'noise', 'images', 'video', 'none'])
     parser.add_argument('--total_frames', default=1000, type=int)
     # replay buffer
-    parser.add_argument('--replay_buffer_capacity', default=1000000, type=int)
+    parser.add_argument('--replay_buffer_capacity', default=10000, type=int)
     # train
     parser.add_argument('--agent', default='bisim', type=str, choices=['baseline', 'bisim', 'deepmdp'])
     parser.add_argument('--init_steps', default=1000, type=int)
-    parser.add_argument('--num_train_steps', default=1000000, type=int)
-    parser.add_argument('--batch_size', default=512, type=int)
+    parser.add_argument('--num_train_steps', default=10000, type=int)
+    parser.add_argument('--batch_size', default=128, type=int)
     parser.add_argument('--hidden_dim', default=256, type=int)
     parser.add_argument('--k', default=3, type=int, help='number of steps for inverse model')
     parser.add_argument('--bisim_coef', default=0.5, type=float, help='coefficient for bisim terms')
@@ -50,12 +52,12 @@ def parse_args():
     parser.add_argument('--eval_freq', default=10, type=int)  # TODO: master had 10000
     parser.add_argument('--num_eval_episodes', default=20, type=int)
     # critic
-    parser.add_argument('--critic_lr', default=1e-3, type=float)
+    parser.add_argument('--critic_lr', default=1e-5, type=float)
     parser.add_argument('--critic_beta', default=0.9, type=float)
     parser.add_argument('--critic_tau', default=0.005, type=float)
     parser.add_argument('--critic_target_update_freq', default=2, type=int)
     # actor
-    parser.add_argument('--actor_lr', default=1e-3, type=float)
+    parser.add_argument('--actor_lr', default=1e-5, type=float)
     parser.add_argument('--actor_beta', default=0.9, type=float)
     parser.add_argument('--actor_log_std_min', default=-10, type=float)
     parser.add_argument('--actor_log_std_max', default=2, type=float)
@@ -63,18 +65,18 @@ def parse_args():
     # encoder/decoder
     parser.add_argument('--encoder_type', default='pixel', type=str, choices=['pixel', 'pixelCarla096', 'pixelCarla098', 'identity'])
     parser.add_argument('--encoder_feature_dim', default=50, type=int)
-    parser.add_argument('--encoder_lr', default=1e-3, type=float)
+    parser.add_argument('--encoder_lr', default=1e-5, type=float)
     parser.add_argument('--encoder_tau', default=0.005, type=float)
     parser.add_argument('--encoder_stride', default=1, type=int)
     parser.add_argument('--decoder_type', default='pixel', type=str, choices=['pixel', 'identity', 'contrastive', 'reward', 'inverse', 'reconstruction'])
-    parser.add_argument('--decoder_lr', default=1e-3, type=float)
+    parser.add_argument('--decoder_lr', default=1e-5, type=float)
     parser.add_argument('--decoder_update_freq', default=1, type=int)
-    parser.add_argument('--decoder_weight_lambda', default=0.0, type=float)
+    parser.add_argument('--decoder_weight_lambda', default=1e-7, type=float)
     parser.add_argument('--num_layers', default=4, type=int)
     parser.add_argument('--num_filters', default=32, type=int)
     # sac
     parser.add_argument('--discount', default=0.99, type=float)
-    parser.add_argument('--init_temperature', default=0.01, type=float)
+    parser.add_argument('--init_temperature', default=0.1, type=float)
     parser.add_argument('--alpha_lr', default=1e-3, type=float)
     parser.add_argument('--alpha_beta', default=0.9, type=float)
     # misc
@@ -287,6 +289,9 @@ def main():
         # TODO: implement env.seed(args.seed) ?
 
         eval_env = env
+    elif args.domain_name == "gridworld":
+        env = EmptyEnv16x16()
+        eval_env = env
     else:
         env = dmc2gym.make(
             domain_name=args.domain_name,
@@ -334,9 +339,10 @@ def main():
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    # the dmc2gym wrapper standardizes actions
-    assert env.action_space.low.min() >= -1
-    assert env.action_space.high.max() <= 1
+    if args.domain_name != "gridworld":
+        # the dmc2gym wrapper standardizes actions
+        assert env.action_space.low.min() >= -1
+        assert env.action_space.high.max() <= 1
 
     replay_buffer = utils.ReplayBuffer(
         obs_shape=env.observation_space.shape,

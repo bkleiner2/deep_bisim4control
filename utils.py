@@ -52,12 +52,9 @@ def module_hash(module):
 
 
 def make_dir(dir_path):
-    try:
-        os.mkdir(dir_path)
-    except OSError:
-        pass
+    if not os.path.exists(dir_path):
+        os.makedirs(dir_path)
     return dir_path
-
 
 def preprocess_obs(obs, bits=5):
     """Preprocessing image, see https://arxiv.org/abs/1807.03039."""
@@ -158,12 +155,18 @@ class FrameStack(gym.Wrapper):
         gym.Wrapper.__init__(self, env)
         self._k = k
         self._frames = deque([], maxlen=k)
-        shp = env.observation_space.shape
+        if isinstance(env.observation_space, gym.spaces.dict.Dict):
+            shp = env.observation_space["image"].shape
+            dtype = env.observation_space["image"].dtype
+        else:
+            shp = env.observation_space.shape
+            dtype = env.observation_space.dtype
+        
         self.observation_space = gym.spaces.Box(
             low=0,
             high=1,
             shape=((shp[0] * k,) + shp[1:]),
-            dtype=env.observation_space.dtype
+            dtype=dtype
         )
         self._max_episode_steps = env._max_episode_steps
 
